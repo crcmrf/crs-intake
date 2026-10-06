@@ -13,35 +13,60 @@
   </header>
 
   <main>
-    <!-- ===== Start screen ===== -->
-    <section id="startView" class="card">
-      <h1>Incoming CRS Various Material</h1>
-      <form id="startForm" class="form-grid" autocomplete="off">
-        <label>Date
-          <input type="date" id="fDate" required>
-        </label>
-        <label>Carrier
-          <input id="fCarrier" list="carrierList" required placeholder="e.g. Smith Transport">
-          <datalist id="carrierList"></datalist>
-        </label>
-        <label>Truck Rego
-          <input id="fRego" required placeholder="e.g. 123ABC" class="upper">
-        </label>
-        <label>Bin No <span class="opt">(optional)</span>
-          <input id="fBin">
-        </label>
-        <label>Location <span class="opt">(optional)</span>
-          <input id="fLocation">
-        </label>
-        <button type="submit" class="primary" id="openBtn">Open sheet</button>
-        <p id="startStatus" class="status" role="status"></p>
-      </form>
+    <!-- ===== Home screen ===== -->
+    <section id="startView" class="home">
+      <div class="card start-card">
+        <h1>Incoming CRS Various Material</h1>
+        <form id="startForm" class="form-grid" autocomplete="off">
+          <label>Date
+            <input type="date" id="fDate" required>
+          </label>
+          <label>Carrier
+            <input id="fCarrier" list="carrierList" required placeholder="e.g. Smith Transport">
+            <datalist id="carrierList"></datalist>
+          </label>
+          <label>Truck Rego
+            <input id="fRego" required placeholder="e.g. 123ABC" class="upper">
+          </label>
+          <label><span>Bin No <span class="opt">(optional)</span></span>
+            <input id="fBin">
+          </label>
+          <label><span>Location <span class="opt">(optional)</span></span>
+            <input id="fLocation">
+          </label>
+          <button type="submit" class="primary" id="openBtn">Open sheet</button>
+          <p id="startStatus" class="status" role="status"></p>
+        </form>
+      </div>
+
+      <div class="card dash recent-card">
+        <div class="dash-head">
+          <h2>Recent loads</h2>
+          <select id="rangeSel" aria-label="Period"></select>
+          <button type="button" id="dashRefresh" class="icon-btn" title="Refresh">↻</button>
+        </div>
+        <p id="dashStatus" class="status"></p>
+        <div id="recentList" class="recent"></div>
+        <button type="button" id="recentMore" class="more" hidden>Show more</button>
+      </div>
+
+      <div class="card dash span-all">
+        <div class="dash-head">
+          <h2>By company</h2>
+          <span id="rangeLabel" class="muted"></span>
+        </div>
+        <p class="hint">Number of bags per material (glass counted in IBCs).</p>
+        <div class="table-wrap">
+          <table id="companyTable" class="company"></table>
+        </div>
+        <button type="button" id="rebuildBtn" class="linkish">Loads missing? Rebuild the summary for this period</button>
+      </div>
     </section>
 
     <!-- ===== Sheet screen ===== -->
     <section id="sheetView" hidden>
       <div class="toolbar">
-        <button type="button" id="backBtn">← New lookup</button>
+        <button type="button" id="backBtn">← Home</button>
         <button type="button" id="refreshBtn">↻ Refresh</button>
         <button type="button" id="printBtn">🖨 Print</button>
         <button type="button" id="saveStatus" class="status-btn" title="Click to retry if not saved"></button>
@@ -106,7 +131,7 @@
         <label>IBC #
           <input id="fIbc">
         </label>
-        <label>Weight (kg) <span class="opt">(optional – can be added later)</span>
+        <label><span>Weight (kg) <span class="opt">(optional – can be added later)</span></span>
           <input id="fWeight" type="number" inputmode="decimal" min="0" step="0.1">
         </label>
       </div>

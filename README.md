@@ -17,7 +17,15 @@ Runs entirely in the browser — no server needed. Host it free on GitHub Pages.
    "Add + another" keeps the same material selected for scanning bags quickly.
 4. **Edit / weigh later** – tap any filled row to edit it, add the glass weight, or delete it. Glass without a weight shows "to weigh".
 5. **Saving** – every change is saved as a commit to the data repo. If two devices edit the same sheet at once, the changes are merged automatically.
-6. **Print** – prints the sheet in the same layout as the paper form.
+6. **Print** – prints the sheet on one A4 portrait page in the same layout as the paper form. Long loads are shrunk to fit; glass still "to weigh" prints blank so the weight can be written in.
+
+## Home page
+Below the lookup form:
+- **Recent loads** – every load in the chosen period, newest first, with bag counts per material. Tap one to open it.
+- **By company** – a table of loads and bags per material for each carrier, with totals.
+- **Period dropdown** – 7 days, 14 days, month, 3, 6 or 12 months (remembered on each device).
+
+These read small monthly summary files (`data/_index/2026-10.json`) that are updated each time a sheet is saved, so the page stays quick even over 12 months. If a load is ever missing from the list, tap **"Rebuild the summary for this period"** at the bottom of the page.
 
 ## Setup (about 10 minutes)
 
