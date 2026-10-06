@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CRS Intake</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">CRS Intake</span>
+    <button id="settingsBtn" class="ghost" type="button">⚙ Settings</button>
+  </header>
+
+  <main>
+    <!-- ===== Start screen ===== -->
+    <section id="startView" class="card">
+      <h1>Incoming CRS Various Material</h1>
+      <form id="startForm" class="form-grid" autocomplete="off">
+        <label>Date
+          <input type="date" id="fDate" required>
+        </label>
+        <label>Carrier
+          <input id="fCarrier" list="carrierList" required placeholder="e.g. Smith Transport">
+          <datalist id="carrierList"></datalist>
+        </label>
+        <label>Truck Rego
+          <input id="fRego" required placeholder="e.g. 123ABC" class="upper">
+        </label>
+        <label>Bin No <span class="opt">(optional)</span>
+          <input id="fBin">
+        </label>
+        <label>Location <span class="opt">(optional)</span>
+          <input id="fLocation">
+        </label>
+        <button type="submit" class="primary" id="openBtn">Open sheet</button>
+        <p id="startStatus" class="status" role="status"></p>
+      </form>
+    </section>
+
+    <!-- ===== Sheet screen ===== -->
+    <section id="sheetView" hidden>
+      <div class="toolbar">
+        <button type="button" id="backBtn">← New lookup</button>
+        <button type="button" id="refreshBtn">↻ Refresh</button>
+        <button type="button" id="printBtn">🖨 Print</button>
+        <button type="button" id="saveStatus" class="status-btn" title="Click to retry if not saved"></button>
+      </div>
+
+      <div class="sheet">
+        <h2>Incoming CRS Various Material</h2>
+        <table class="meta">
+          <tr><th>Date:</th><td id="mDate"></td><th>Truck Rego:</th><td id="mRego"></td></tr>
+          <tr><th>Carrier:</th><td id="mCarrier"></td><th>Bin No:</th><td id="mBin"></td></tr>
+          <tr><th>Location:</th><td id="mLocation" colspan="3"></td></tr>
+        </table>
+
+        <div class="table-wrap">
+          <table class="grid">
+            <colgroup>
+              <col class="c-idx"><col><col class="c-mat"><col><col><col>
+            </colgroup>
+            <thead>
+              <tr class="groups">
+                <th colspan="2" class="alu">Aluminium</th>
+                <th colspan="2" class="other">Other</th>
+                <th colspan="2" class="glass">Glass</th>
+              </tr>
+              <tr class="sub">
+                <th>#</th><th>Bag Number</th>
+                <th>Material</th><th>Bag Number</th>
+                <th>IBC #</th><th>Weight (kg)</th>
+              </tr>
+            </thead>
+            <tbody id="gridBody"></tbody>
+            <tfoot>
+              <tr>
+                <td colspan="2" id="totAlu"></td>
+                <td colspan="2" id="totOther"></td>
+                <td colspan="2" id="totGlass"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div id="summary" class="summary"></div>
+      </div>
+
+      <button type="button" id="addBtn" class="fab" aria-label="Add entry">+</button>
+    </section>
+  </main>
+
+  <!-- ===== Add / edit entry ===== -->
+  <dialog id="entryDialog">
+    <form id="entryForm" autocomplete="off">
+      <h3 id="entryTitle">Add entry</h3>
+      <p class="hint">What is it?</p>
+      <div id="matGrid" class="mat-grid"></div>
+
+      <div id="bagFields" hidden>
+        <label>Bag Number
+          <input id="fBag" inputmode="numeric">
+        </label>
+      </div>
+
+      <div id="glassFields" hidden>
+        <label>IBC #
+          <input id="fIbc">
+        </label>
+        <label>Weight (kg) <span class="opt">(optional – can be added later)</span>
+          <input id="fWeight" type="number" inputmode="decimal" min="0" step="0.1">
+        </label>
+      </div>
+
+      <p id="entryError" class="status err"></p>
+
+      <div class="actions">
+        <button type="button" id="entryDelete" class="danger" hidden>Delete</button>
+        <span class="spacer"></span>
+        <button type="button" id="entryCancel">Cancel</button>
+        <button type="button" id="entryAddAnother" disabled>Add + another</button>
+        <button type="submit" id="entrySubmit" class="primary" disabled>Add</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ===== Settings ===== -->
+  <dialog id="settingsDialog">
+    <form id="settingsForm" autocomplete="off">
+      <h3>GitHub connection</h3>
+      <p class="hint">Sheets are stored as files in this GitHub repository. The token is saved only on this device.</p>
+      <label>Repo owner (user or organisation)
+        <input id="sOwner" required>
+      </label>
+      <label>Data repository name
+        <input id="sRepo" required>
+      </label>
+      <label>Branch
+        <input id="sBranch" required>
+      </label>
+      <label>Folder in repo
+        <input id="sDir" required>
+      </label>
+      <label>Access token
+        <input id="sToken" type="password" required placeholder="github_pat_…">
+      </label>
+      <p id="settingsStatus" class="status"></p>
+      <div class="actions">
+        <button type="button" id="sTest">Test connection</button>
+        <span class="spacer"></span>
+        <button type="button" id="sCancel">Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
