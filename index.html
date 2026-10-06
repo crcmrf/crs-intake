@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CRS Intake</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta http-equiv="Cache-Control" content="no-cache">
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
   <header class="topbar">
-    <span class="brand">CRS Intake</span>
+    <span class="brand">CRS Intake <small class="ver">v4</small></span>
     <button id="settingsBtn" class="ghost" type="button">⚙ Settings</button>
   </header>
 
@@ -52,10 +53,11 @@
 
       <div class="card dash span-all">
         <div class="dash-head">
-          <h2>By company</h2>
+          <h2>By location</h2>
           <span id="rangeLabel" class="muted"></span>
+          <button type="button" id="exportDash" class="excel-btn">⬇ Export to Excel</button>
         </div>
-        <p class="hint">Number of bags per material (glass counted in IBCs).</p>
+        <p class="hint">Number of bags per material (glass counted in IBCs). The export also lists every load in the period.</p>
         <div class="table-wrap">
           <table id="companyTable" class="company"></table>
         </div>
@@ -69,6 +71,7 @@
         <button type="button" id="backBtn">← Home</button>
         <button type="button" id="refreshBtn">↻ Refresh</button>
         <button type="button" id="printBtn">🖨 Print</button>
+        <button type="button" id="exportSheet">⬇ Excel</button>
         <button type="button" id="saveStatus" class="status-btn" title="Click to retry if not saved"></button>
       </div>
 
@@ -178,7 +181,8 @@
     </form>
   </dialog>
 
-  <script src="config.js"></script>
-  <script src="app.js"></script>
+  <script src="config.js?v=4"></script>
+  <script src="xlsx.js?v=4"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

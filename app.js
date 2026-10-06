@@ -523,6 +523,107 @@
     return dt.toLocaleDateString('en-AU', { weekday: 'short' });
   }
 
+  // Totals per location (loads with no location are grouped together).
+  const NO_LOCATION = 'No location';
+  function groupByLocation(sheets) {
+    const map = new Map();
+    const total = { loads: 0, counts: {}, glassKg: 0 };
+    for (const s of sheets) {
+      const name = (s.location || '').trim();
+      const key = name.toLowerCase();
+      let row = map.get(key);
+      if (!row) { row = { name: name || NO_LOCATION, blank: !name, loads: 0, counts: {}, glassKg: 0 }; map.set(key, row); }
+      row.loads++;
+      row.glassKg += s.glassKg || 0;
+      total.loads++;
+      total.glassKg += s.glassKg || 0;
+      for (const [mat, n] of Object.entries(s.counts || {})) {
+        row.counts[mat] = (row.counts[mat] || 0) + n;
+        total.counts[mat] = (total.counts[mat] || 0) + n;
+      }
+    }
+    const rows = [...map.values()].sort((a, b) =>
+      (a.blank - b.blank) || b.loads - a.loads || a.name.localeCompare(b.name));
+    return { rows, total };
+  }
+
+  // ---------- Excel export (uses xlsx.js, no internet needed) ----------
+  const xlDate = (d) => ({ date: d });
+  const safeName = (s) => s.replace(/[\\/:*?"<>|]+/g, '-').trim();
+
+  function exportDashboard() {
+    if (!dashSheets.length) { alert('There are no loads in this period to export.'); return; }
+    try {
+      const r = currentRange();
+      const matHead = MATERIALS.map(m => (m.group === 'glass' ? 'Glass (IBC)' : m.id));
+      const kg = (n) => Math.round((n || 0) * 10) / 10;
+
+      // Sheet 1: totals by location
+      const { rows, total } = groupByLocation(dashSheets);
+      const loc = [
+        [`CRS material by location – ${r.label}`],
+        [`${fmtDate(rangeStart(r))} to ${fmtDate(todayLocal())}`],
+        [],
+        ['Location', 'Loads', ...matHead, 'Glass kg'],
+        ...rows.map(x => [x.name, x.loads, ...MATERIALS.map(m => x.counts[m.id] || 0), kg(x.glassKg)]),
+        ['Total', total.loads, ...MATERIALS.map(m => total.counts[m.id] || 0), kg(total.glassKg)],
+      ];
+
+      // Sheet 2: every load in the period
+      const loads = [
+        ['Date', 'Carrier', 'Truck Rego', 'Bin No', 'Location', ...matHead, 'Glass kg', 'Glass to weigh', 'Total items'],
+        ...dashSheets.map(s => [
+          xlDate(s.date), s.carrier, s.rego, s.bin || '', s.location || '',
+          ...MATERIALS.map(m => (s.counts || {})[m.id] || 0),
+          kg(s.glassKg), s.toWeigh || 0, s.total || 0,
+        ]),
+      ];
+
+      window.downloadXlsx(safeName(`CRS summary - ${r.label} - ${todayLocal()}.xlsx`), [
+        { name: 'By location', rows: loc, widths: [24, 8, ...MATERIALS.map(() => 13), 10],
+          titleRows: [0], boldRows: [3, loc.length - 1] },
+        { name: 'Loads', rows: loads, widths: [12, 22, 12, 8, 18, ...MATERIALS.map(() => 13), 10, 14, 11],
+          boldRows: [0] },
+      ]);
+    } catch (e) {
+      alert(`Export failed: ${e.message}`);
+    }
+  }
+
+  function exportSheet() {
+    if (!sheet) return;
+    try {
+      const m = sheet.doc.meta;
+      const time = (iso) => (iso ? new Date(iso).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }) : '');
+      const order = Object.fromEntries(MATERIALS.map((x, i) => [x.id, i]));
+      const entries = [...sheet.doc.entries].sort((a, b) =>
+        (order[a.material] ?? 99) - (order[b.material] ?? 99) || (a.createdAt || '').localeCompare(b.createdAt || ''));
+      const totals = MATERIALS.map(x => [x.id, entries.filter(e => e.material === x.id).length]).filter(r => r[1]);
+      const rows = [
+        ['Incoming CRS Various Material'],
+        ['Date', xlDate(m.date), '', 'Truck Rego', m.rego],
+        ['Carrier', m.carrier, '', 'Bin No', m.bin || ''],
+        ['Location', m.location || ''],
+        [],
+        ['Material', 'Bag Number', 'IBC #', 'Weight (kg)', 'Added'],
+        ...entries.map(e => [
+          e.material, e.bag || '', e.ibc || '',
+          e.weight === '' || e.weight == null ? '' : Number(e.weight),
+          time(e.createdAt),
+        ]),
+        [],
+        ['Totals'],
+        ...totals,
+      ];
+      const totalsRow = 7 + entries.length;
+      window.downloadXlsx(safeName(`${m.date} ${m.carrier} ${m.rego}.xlsx`), [
+        { name: 'Sheet', rows, widths: [16, 16, 12, 12, 10], titleRows: [0], boldRows: [5, totalsRow] },
+      ]);
+    } catch (e) {
+      alert(`Export failed: ${e.message}`);
+    }
+  }
+
   function renderDashboard() {
     // ----- Recent loads -----
     const listEl = $('#recentList');
@@ -571,22 +672,13 @@
     more.hidden = dashSheets.length <= recentShown;
     more.textContent = `Show more (${dashSheets.length - recentShown} more)`;
 
-    // ----- By company -----
-    const byCo = new Map();
-    for (const s of dashSheets) {
-      const key = s.carrier.trim().toLowerCase();
-      let row = byCo.get(key);
-      if (!row) { row = { name: s.carrier, loads: 0, counts: {}, glassKg: 0 }; byCo.set(key, row); }
-      row.loads++;
-      row.glassKg += s.glassKg || 0;
-      for (const [mat, n] of Object.entries(s.counts || {})) row.counts[mat] = (row.counts[mat] || 0) + n;
-    }
-    const rows = [...byCo.values()].sort((a, b) => b.loads - a.loads || a.name.localeCompare(b.name));
+    // ----- By location -----
+    const { rows, total } = groupByLocation(dashSheets);
 
     const table = $('#companyTable');
     table.textContent = '';
     const thead = el('thead'), htr = el('tr');
-    htr.append(el('th', '', 'Company'), el('th', '', 'Loads'));
+    htr.append(el('th', '', 'Location'), el('th', '', 'Loads'));
     for (const mat of MATERIALS) htr.append(el('th', mat.group, mat.group === 'glass' ? 'Glass (IBC)' : mat.id));
     htr.append(el('th', 'glass', 'Glass kg'));
     thead.append(htr);
@@ -597,16 +689,12 @@
     };
 
     const tbody = el('tbody');
-    const total = { loads: 0, counts: {}, glassKg: 0 };
     for (const r of rows) {
       const tr = el('tr');
-      tr.append(el('td', '', r.name), numCell(r.loads));
+      tr.append(el('td', r.blank ? 'muted' : '', r.name), numCell(r.loads));
       for (const mat of MATERIALS) tr.append(numCell(r.counts[mat.id]));
       tr.append(numCell(r.glassKg, 1));
       tbody.append(tr);
-      total.loads += r.loads;
-      total.glassKg += r.glassKg;
-      for (const [k, n] of Object.entries(r.counts)) total.counts[k] = (total.counts[k] || 0) + n;
     }
     if (!rows.length) {
       const tr = el('tr'), td = el('td', 'empty', isConfigured() ? 'No loads in this period.' : '');
@@ -844,6 +932,8 @@
     $('#dashRefresh').addEventListener('click', loadDashboard);
     $('#recentMore').addEventListener('click', () => { recentShown += RECENT_PAGE; renderDashboard(); });
     $('#rebuildBtn').addEventListener('click', rebuildIndex);
+    $('#exportDash').addEventListener('click', exportDashboard);
+    $('#exportSheet').addEventListener('click', exportSheet);
 
     $('#fRego').addEventListener('input', (e) => {
       const p = e.target.selectionStart;

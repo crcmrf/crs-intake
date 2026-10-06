@@ -17,12 +17,14 @@ Runs entirely in the browser — no server needed. Host it free on GitHub Pages.
    "Add + another" keeps the same material selected for scanning bags quickly.
 4. **Edit / weigh later** – tap any filled row to edit it, add the glass weight, or delete it. Glass without a weight shows "to weigh".
 5. **Saving** – every change is saved as a commit to the data repo. If two devices edit the same sheet at once, the changes are merged automatically.
-6. **Print** – prints the sheet on one A4 portrait page in the same layout as the paper form. Long loads are shrunk to fit; glass still "to weigh" prints blank so the weight can be written in.
+6. **Excel** – the ⬇ Excel button on a sheet downloads that truck's bags and IBCs as an .xlsx file.
+7. **Print** – prints the sheet on one A4 portrait page in the same layout as the paper form. Long loads are shrunk to fit; glass still "to weigh" prints blank so the weight can be written in.
 
 ## Home page
 Below the lookup form:
 - **Recent loads** – every load in the chosen period, newest first, with bag counts per material. Tap one to open it.
-- **By company** – a table of loads and bags per material for each carrier, with totals.
+- **By location** – a table of loads and bags per material for each location, with totals. Loads saved without a location are grouped as "No location".
+- **Export to Excel** – downloads the period as an .xlsx file with two tabs: *By location* (the totals table) and *Loads* (every load, one row each).
 - **Period dropdown** – 7 days, 14 days, month, 3, 6 or 12 months (remembered on each device).
 
 These read small monthly summary files (`data/_index/2026-10.json`) that are updated each time a sheet is saved, so the page stays quick even over 12 months. If a load is ever missing from the list, tap **"Rebuild the summary for this period"** at the bottom of the page.
@@ -59,6 +61,9 @@ Open the site, tap **⚙ Settings**, paste the token, tap **Test connection**, t
   ```html
   <iframe src="https://<username>.github.io/crs-intake/" style="width:100%;height:900px;border:0"></iframe>
   ```
+
+## Files
+`index.html`, `styles.css`, `app.js` (the app), `xlsx.js` (builds the Excel files in the browser – no outside library), `config.js` (your repo settings).
 
 ## Data format
 Each sheet is a JSON file:

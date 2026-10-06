@@ -74,6 +74,8 @@ select {
 .chip.glass { background: var(--glass); }
 .empty { color: var(--muted); padding: 18px 0; text-align: center; font-size: .9rem; }
 .more { width: 100%; margin-top: 8px; }
+.excel-btn { padding: 8px 12px; font-size: .88rem; border-color: #1d6f42; color: #1d6f42; font-weight: 600; }
+.excel-btn:hover { background: #eef7f1; }
 
 table.company { width: 100%; border-collapse: collapse; font-size: .88rem; min-width: 680px; }
 .company th, .company td { padding: 7px 8px; border-bottom: 1px solid var(--hair); text-align: right; white-space: nowrap; }
@@ -193,8 +195,9 @@ body.print-mode .summary { display: none; }
 
 @media print {
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .topbar, .toolbar, .fab, .linkish, .icon-btn, .more { display: none !important; }
+  .topbar, .toolbar, .fab, .linkish, .icon-btn, .more, .excel-btn { display: none !important; }
   body { background: #fff; }
   main, #sheetView { padding: 0; margin: 0; max-width: none; }
   .card { box-shadow: none; }
 }
+.ver { font-weight: 400; opacity: .55; font-size: .75rem; margin-left: 4px; }
