@@ -21,6 +21,10 @@
   ];
   const groupOf = (material) => (MATERIALS.find(m => m.id === material) || { group: 'other' }).group;
   const MIN_ROWS = 20;
+  // Dropdown choices – can be changed in config.js (carriers: [...], locations: [...]).
+  const CARRIERS = (window.CRS_CONFIG && window.CRS_CONFIG.carriers) || ['Hawkins', 'MAMS'];
+  const LOCATIONS = (window.CRS_CONFIG && window.CRS_CONFIG.locations) || ['Normanton', 'Badu Island', 'Thursday Island'];
+  const OTHER = '__other__';
   const RECENT_PAGE = 25;
   const cfg = window.CRS_CONFIG || {};
   const $ = (s) => document.querySelector(s);
@@ -410,10 +414,10 @@
     if (!sheet) return;
     const m = sheet.doc.meta;
     $('#dDate').textContent = fmtDate(m.date);
-    $('#dCarrier').value = m.carrier || '';
+    setCombo('#dCarrier', m.carrier || '');
     $('#dRego').value = m.rego || '';
     $('#dBin').value = m.bin || '';
-    $('#dLocation').value = m.location || '';
+    setCombo('#dLocation', m.location || '');
     $('#dManifest').value = m.manifest || '';
     $('#detailsError').textContent = '';
     ddlg.showModal();
@@ -647,6 +651,7 @@
     const seq = ++dashSeq;
     const r = currentRange();
     $('#rangeLabel').textContent = r.label;
+    if (seq === 1 || !$('#reportList').childElementCount) loadReports();
     if (!isConfigured()) {
       dashSheets = [];
       renderDashboard();
@@ -680,6 +685,74 @@
     } catch (e) {
       if (seq !== dashSeq) return;
       setDashStatus(e.message, 'err');
+    }
+  }
+
+  // ---------- Monthly reports (made by the GitHub job in the data repo) ----------
+  const reportsDir = () => (cfg.reportsDir || 'reports').replace(/^\/+|\/+$/g, '');
+  let reportsShowAll = false;
+
+  async function loadReports() {
+    const list = $('#reportList'), st = $('#reportStatus');
+    list.textContent = '';
+    st.className = 'status';
+    if (!isConfigured()) { st.textContent = ''; return; }
+    st.textContent = 'Loading…';
+    try {
+      const res = await fetch(`${contentsUrl(reportsDir())}?ref=${encodeURIComponent(settings.branch)}`,
+        { headers: headers(), cache: 'no-store' });
+      if (res.status === 404) {
+        st.textContent = 'No monthly reports yet. They appear here after the first automatic run on the 1st of the month.';
+        return;
+      }
+      if (!res.ok) throw await apiError(res);
+      const files = (await res.json())
+        .filter(f => f.type === 'file' && /\.xlsx$/i.test(f.name))
+        .map(f => ({ ...f, month: (f.name.match(/(\d{4})-(\d{2})/) || [])[0] || '' }))
+        .sort((a, b) => b.month.localeCompare(a.month) || b.name.localeCompare(a.name));
+      st.textContent = files.length ? '' : 'No monthly reports yet.';
+      const shown = reportsShowAll ? files : files.slice(0, 6);
+      for (const f of shown) {
+        let label = f.name;
+        if (f.month) {
+          const [y, m] = f.month.split('-').map(Number);
+          label = new Date(y, m - 1, 1).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+        }
+        const b = el('button', 'report-item');
+        b.type = 'button';
+        b.title = f.name;
+        b.append(el('span', 'report-icon', 'XLSX'), el('span', 'report-name', label), el('span', 'report-dl', '⬇'));
+        b.addEventListener('click', () => downloadReport(f, b));
+        list.append(b);
+      }
+      if (files.length > shown.length) {
+        const more = el('button', 'more', `Show all ${files.length} reports`);
+        more.type = 'button';
+        more.addEventListener('click', () => { reportsShowAll = true; loadReports(); });
+        list.append(more);
+      }
+    } catch (e) {
+      st.className = 'status err';
+      st.textContent = e.message;
+    }
+  }
+
+  async function downloadReport(f, btn) {
+    btn.disabled = true;
+    try {
+      const res = await fetch(`${contentsUrl(f.path)}?ref=${encodeURIComponent(settings.branch)}`,
+        { headers: headers(settings, { Accept: 'application/vnd.github.raw' }), cache: 'no-store' });
+      if (!res.ok) throw await apiError(res);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = f.name;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) {
+      alert(`Download failed: ${e.message}`);
+    } finally {
+      btn.disabled = false;
     }
   }
 
@@ -836,10 +909,10 @@
       b.append(date, main, chips);
       b.addEventListener('click', () => {
         $('#fDate').value = s.date;
-        $('#fCarrier').value = s.carrier;
+        setCombo('#fCarrier', s.carrier);
         $('#fRego').value = s.rego;
         $('#fBin').value = s.bin || '';
-        $('#fLocation').value = s.location || '';
+        setCombo('#fLocation', s.location || '');
         openSheet({ date: s.date, carrier: s.carrier, rego: s.rego, bin: s.bin || '', location: s.location || '' }, s.path);
       });
       listEl.append(b);
@@ -1091,10 +1164,49 @@
     }
   }
 
+  // ---------- Dropdown with an "Other (type it in)" option ----------
+  // The original text box stays the real value; the dropdown fills it in.
+  function setupCombo(inputSel, options, blankLabel) {
+    const input = $(inputSel);
+    const required = input.required;
+    const sel = el('select', 'combo');
+    sel.id = `${input.id}Sel`;
+    sel.required = required;
+    sel.append(new Option(blankLabel, ''));
+    for (const o of options) sel.append(new Option(o, o));
+    sel.append(new Option('Other (type it in)…', OTHER));
+    input.before(sel);
+    input.placeholder = 'Type it in';
+    input.classList.add('combo-other');
+    const apply = (focus) => {
+      const other = sel.value === OTHER;
+      input.hidden = !other;
+      input.required = other && required;
+      if (!other) input.value = sel.value;
+      else if (focus) { input.value = ''; input.focus(); }
+    };
+    sel.addEventListener('change', () => apply(true));
+    input._combo = { sel, apply, options };
+    apply(false);
+  }
+  function setCombo(inputSel, value) {
+    const input = $(inputSel), c = input._combo;
+    const v = String(value || '').trim();
+    if (!c) { input.value = v; return; }
+    const match = c.options.find(o => o.toLowerCase() === v.toLowerCase());
+    c.sel.value = !v ? '' : match || OTHER;
+    c.apply(false);
+    if (c.sel.value === OTHER) input.value = v;
+  }
+
   // ---------- Wire up ----------
   function init() {
     $('#fDate').value = todayLocal();
     refreshCarrierList();
+    setupCombo('#fCarrier', CARRIERS, 'Choose carrier…');
+    setupCombo('#fLocation', LOCATIONS, '— None —');
+    setupCombo('#dCarrier', CARRIERS, 'Choose carrier…');
+    setupCombo('#dLocation', LOCATIONS, '— None —');
     buildMaterialButtons();
 
     // Period dropdown (remembers the last choice on this device)
@@ -1105,7 +1217,7 @@
     rangeSel.value = store.get('crs-range', '7d');
     if (!rangeSel.value) rangeSel.value = '7d';
     rangeSel.addEventListener('change', () => { store.set('crs-range', rangeSel.value); loadDashboard(); });
-    $('#dashRefresh').addEventListener('click', loadDashboard);
+    $('#dashRefresh').addEventListener('click', () => { loadDashboard(); loadReports(); });
     $('#recentMore').addEventListener('click', () => { recentShown += RECENT_PAGE; renderDashboard(); });
     $('#rebuildBtn').addEventListener('click', rebuildIndex);
     $('#exportDash').addEventListener('click', exportDashboard);
@@ -1137,6 +1249,8 @@
       // Clear the lookup so the next truck starts fresh
       $('#startForm').reset();
       $('#fDate').value = todayLocal();
+      setCombo('#fCarrier', '');
+      setCombo('#fLocation', '');
       showStart();
     });
     $('#refreshBtn').addEventListener('click', refreshSheet);
@@ -1184,6 +1298,7 @@
       idxCache.clear();
       sdlg.close();
       loadDashboard();
+      loadReports();
     });
 
     window.addEventListener('beforeunload', (e) => {

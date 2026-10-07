@@ -218,3 +218,20 @@ input.tick { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); 
 body.print-mode #mManifest.placeholder { color: transparent; }
 body.print-mode #metaTable:hover td { background: none; }
 body.print-mode .grid td.done { background: none; }
+
+/* ---------- Dropdown + "Other" box ---------- */
+select.combo { width: 100%; padding: 11px 12px; font-weight: 400; }
+select.combo + input.combo-other { margin-top: 6px; }
+
+/* ---------- Monthly reports ---------- */
+.report-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.report-list .more { grid-column: 1 / -1; }
+.report-item {
+  display: flex; align-items: center; gap: 10px; text-align: left;
+  border: 1px solid var(--hair); border-radius: 10px; padding: 10px 12px; background: #fff;
+}
+.report-item:hover { border-color: #1d6f42; background: #eef7f1; }
+.report-icon { font-size: .65rem; font-weight: 700; color: #fff; background: #1d6f42; border-radius: 4px; padding: 3px 5px; letter-spacing: .03em; }
+.report-name { flex: 1; font-weight: 600; }
+.report-dl { color: #1d6f42; }
+@media print { #reportsCard { display: none; } }

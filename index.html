@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CRS Intake</title>
   <meta http-equiv="Cache-Control" content="no-cache">
-  <link rel="stylesheet" href="styles.css?v=5">
+  <link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
   <header class="topbar">
-    <span class="brand">CRS Intake <small class="ver">v5</small></span>
+    <span class="brand">CRS Intake <small class="ver">v7</small></span>
     <button id="settingsBtn" class="ghost" type="button">⚙ Settings</button>
   </header>
 
@@ -23,7 +23,7 @@
             <input type="date" id="fDate" required>
           </label>
           <label>Carrier
-            <input id="fCarrier" list="carrierList" required placeholder="e.g. Smith Transport">
+            <input id="fCarrier" list="carrierList" required>
             <datalist id="carrierList"></datalist>
           </label>
           <label>Truck Rego
@@ -62,6 +62,15 @@
           <table id="companyTable" class="company"></table>
         </div>
         <button type="button" id="rebuildBtn" class="linkish">Loads missing? Rebuild the summary for this period</button>
+      </div>
+
+      <div class="card dash span-all" id="reportsCard">
+        <div class="dash-head">
+          <h2>Monthly reports</h2>
+        </div>
+        <p class="hint">The By location totals for each month, saved automatically on the 1st of the following month.</p>
+        <p id="reportStatus" class="status"></p>
+        <div id="reportList" class="report-list"></div>
       </div>
     </section>
 
@@ -212,8 +221,8 @@
     </form>
   </dialog>
 
-  <script src="config.js?v=5"></script>
-  <script src="xlsx.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="config.js?v=7"></script>
+  <script src="xlsx.js?v=7"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

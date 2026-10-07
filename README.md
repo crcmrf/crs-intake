@@ -15,7 +15,10 @@ Runs entirely in the browser — no server needed. Host it free on GitHub Pages.
    - PET - Clear, PET - Colour, HDPE, LPB, Steel → *Other* column, asks for bag number
    - Glass → *Glass* column, asks for IBC # and optional weight
    "Add + another" keeps the same material selected for scanning bags quickly.
-4. **Edit / weigh later** – tap any filled row to edit it, add the glass weight, or delete it. Glass without a weight shows "to weigh".
+4. **Tick off** – each entry has a tick box. Ticking it crosses the entry out (it stays on the sheet) and saves who-knows-when in the Excel export. Untick to undo.
+5. **Edit details** – tap the header box or **✎ Edit details** to change the carrier, rego, bin no, location or manifest no. The date can't be changed. Changing carrier/rego/bin/location moves the sheet to its new file name and leaves a pointer behind, so looking up the old details still opens the right sheet.
+6. **Manifest No** – shown under Location; usually added later via Edit details.
+7. **Edit / weigh later** – tap any filled row to edit it, add the glass weight, or delete it. Glass without a weight shows "to weigh".
 5. **Saving** – every change is saved as a commit to the data repo. If two devices edit the same sheet at once, the changes are merged automatically.
 6. **Excel** – the ⬇ Excel button on a sheet downloads that truck's bags and IBCs as an .xlsx file.
 7. **Print** – prints the sheet on one A4 portrait page in the same layout as the paper form. Long loads are shrunk to fit; glass still "to weigh" prints blank so the weight can be written in.
@@ -62,8 +65,11 @@ Open the site, tap **⚙ Settings**, paste the token, tap **Test connection**, t
   <iframe src="https://<username>.github.io/crs-intake/" style="width:100%;height:900px;border:0"></iframe>
   ```
 
+## Monthly reports
+A scheduled GitHub job in the **data repo** creates an Excel file of the By location totals for each month, on the 1st of the following month. The files show under **Monthly reports** on the home page. Setup steps are in the `crs-intake-data-repo` folder's README.
+
 ## Files
-`index.html`, `styles.css`, `app.js` (the app), `xlsx.js` (builds the Excel files in the browser – no outside library), `config.js` (your repo settings).
+`index.html`, `styles.css`, `app.js` (the app), `xlsx.js` (builds the Excel files in the browser – no outside library), `config.js` (your repo settings and the carrier/location dropdown lists).
 
 ## Data format
 Each sheet is a JSON file:
