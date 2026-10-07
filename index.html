@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CRS Intake</title>
   <meta http-equiv="Cache-Control" content="no-cache">
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
   <header class="topbar">
-    <span class="brand">CRS Intake <small class="ver">v4</small></span>
+    <span class="brand">CRS Intake <small class="ver">v5</small></span>
     <button id="settingsBtn" class="ghost" type="button">⚙ Settings</button>
   </header>
 
@@ -72,15 +72,17 @@
         <button type="button" id="refreshBtn">↻ Refresh</button>
         <button type="button" id="printBtn">🖨 Print</button>
         <button type="button" id="exportSheet">⬇ Excel</button>
+        <button type="button" id="editDetailsBtn">✎ Edit details</button>
         <button type="button" id="saveStatus" class="status-btn" title="Click to retry if not saved"></button>
       </div>
 
       <div class="sheet">
         <h2>Incoming CRS Various Material</h2>
-        <table class="meta">
+        <table class="meta" id="metaTable" title="Tap to edit details">
           <tr><th>Date:</th><td id="mDate"></td><th>Truck Rego:</th><td id="mRego"></td></tr>
           <tr><th>Carrier:</th><td id="mCarrier"></td><th>Bin No:</th><td id="mBin"></td></tr>
           <tr><th>Location:</th><td id="mLocation" colspan="3"></td></tr>
+          <tr class="manifest-row"><th>Manifest No:</th><td id="mManifest" colspan="3"></td></tr>
         </table>
 
         <div class="table-wrap">
@@ -151,6 +153,35 @@
     </form>
   </dialog>
 
+  <!-- ===== Edit sheet details ===== -->
+  <dialog id="detailsDialog">
+    <form id="detailsForm" autocomplete="off">
+      <h3>Edit details</h3>
+      <p class="hint">Date: <b id="dDate"></b> (the date can't be changed)</p>
+      <label>Carrier
+        <input id="dCarrier" list="carrierList" required>
+      </label>
+      <label>Truck Rego
+        <input id="dRego" required class="upper">
+      </label>
+      <label><span>Bin No <span class="opt">(optional)</span></span>
+        <input id="dBin">
+      </label>
+      <label><span>Location <span class="opt">(optional)</span></span>
+        <input id="dLocation">
+      </label>
+      <label><span>Manifest No <span class="opt">(optional – can be added later)</span></span>
+        <input id="dManifest">
+      </label>
+      <p id="detailsError" class="status err"></p>
+      <div class="actions">
+        <span class="spacer"></span>
+        <button type="button" id="dCancel">Cancel</button>
+        <button type="submit" id="dSave" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- ===== Settings ===== -->
   <dialog id="settingsDialog">
     <form id="settingsForm" autocomplete="off">
@@ -181,8 +212,8 @@
     </form>
   </dialog>
 
-  <script src="config.js?v=4"></script>
-  <script src="xlsx.js?v=4"></script>
-  <script src="app.js?v=4"></script>
+  <script src="config.js?v=5"></script>
+  <script src="xlsx.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

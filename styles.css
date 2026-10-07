@@ -134,8 +134,8 @@ button:disabled { opacity: .5; cursor: default; }
 
 .table-wrap { overflow-x: auto; }
 table.grid { width: 100%; border-collapse: collapse; font-size: .9rem; min-width: 540px; table-layout: fixed; }
-.grid col.c-idx { width: 40px; }
-.grid col.c-mat { width: 110px; }
+.grid col.c-idx { width: 58px; }
+.grid col.c-mat { width: 138px; }
 .grid th, .grid td {
   border: 1px solid var(--line); padding: 4px 6px; height: 28px; text-align: left;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -201,3 +201,20 @@ body.print-mode .summary { display: none; }
   .card { box-shadow: none; }
 }
 .ver { font-weight: 400; opacity: .55; font-size: .75rem; margin-left: 4px; }
+
+/* ---------- Tick-off ---------- */
+.tick-wrap { display: inline-flex; align-items: center; padding: 0 6px 0 0; margin: -4px 0; cursor: pointer; vertical-align: middle; }
+input.tick { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.grid td.done .txt { text-decoration: line-through; text-decoration-thickness: 2px; color: #8a8f98; }
+.grid td.done { background: #f4f6f5; }
+.grid td.idx .txt { vertical-align: middle; }
+.chip.chip-done { background: #dff1e6; color: var(--ok); font-weight: 600; }
+.chip.chip-todo { background: #fff; border-color: var(--soft); }
+
+/* ---------- Editable header ---------- */
+#metaTable { cursor: pointer; }
+#metaTable:hover td { background: #f6faf8; }
+#mManifest.placeholder { color: var(--muted); font-weight: 400; font-style: italic; }
+body.print-mode #mManifest.placeholder { color: transparent; }
+body.print-mode #metaTable:hover td { background: none; }
+body.print-mode .grid td.done { background: none; }

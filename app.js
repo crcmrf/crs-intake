@@ -152,6 +152,17 @@
     if (meta.location) name += `__loc-${slug(meta.location)}`;
     return `${settings.dataDir}/${meta.date}/${name}.json`;
   }
+  // When a sheet's details change it moves to a new file and leaves a small
+  // { movedTo } marker behind – follow those so old links/lookups still work.
+  async function getSheet(path) {
+    for (let hop = 0; hop < 5; hop++) {
+      const f = await getFile(path);
+      if (f && f.doc && f.doc.movedTo) { path = f.doc.movedTo; continue; }
+      return { path, found: f, moved: hop > 0 };
+    }
+    return { path, found: null, moved: true };
+  }
+
   function newDoc(meta) {
     return { version: 1, meta, entries: [], deleted: [], createdAt: nowIso(), updatedAt: nowIso() };
   }
@@ -166,7 +177,13 @@
       if (!cur || (e.updatedAt || '') > (cur.updatedAt || '')) byId.set(e.id, e);
     }
     const entries = [...byId.values()].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
-    return { ...remote, entries, deleted: [...deleted] };
+    const localMetaNewer = (local.metaUpdatedAt || '') > (remote.metaUpdatedAt || '');
+    return {
+      ...remote,
+      meta: localMetaNewer ? local.meta : remote.meta,
+      metaUpdatedAt: localMetaNewer ? local.metaUpdatedAt : remote.metaUpdatedAt,
+      entries, deleted: [...deleted],
+    };
   }
 
   // ---------- Summary index ----------
@@ -177,9 +194,10 @@
 
   function summarize(path, doc) {
     const counts = {};
-    let glassKg = 0, toWeigh = 0;
+    let glassKg = 0, toWeigh = 0, done = 0;
     for (const e of doc.entries) {
       counts[e.material] = (counts[e.material] || 0) + 1;
+      if (e.done) done++;
       if (groupOf(e.material) === 'glass') {
         if (e.weight === '' || e.weight == null) toWeigh++;
         else glassKg += Number(e.weight) || 0;
@@ -188,12 +206,13 @@
     const m = doc.meta;
     return {
       path, date: m.date, carrier: m.carrier, rego: m.rego, bin: m.bin || '', location: m.location || '',
+      manifest: m.manifest || '', done,
       counts, glassKg: Math.round(glassKg * 10) / 10, toWeigh, total: doc.entries.length,
       updatedAt: doc.updatedAt || nowIso(),
     };
   }
 
-  async function writeIndexEntry(sheetPath, doc) {
+  async function writeIndexEntry(sheetPath, doc, oldPath) {
     const month = doc.meta.date.slice(0, 7);
     const ipath = indexPath(month);
     const sum = doc.entries.length ? summarize(sheetPath, doc) : null;
@@ -204,9 +223,11 @@
         cur = f ? { sha: f.sha, doc: f.doc } : { sha: null, doc: { version: 1, month, sheets: {} } };
       }
       const next = { ...cur.doc, sheets: { ...(cur.doc.sheets || {}) }, updatedAt: nowIso() };
-      if (sum) next.sheets[sheetPath] = sum;
-      else if (sheetPath in next.sheets) delete next.sheets[sheetPath];
-      else { idxCache.set(ipath, cur); return; } // nothing to change
+      let changed = false;
+      if (oldPath && oldPath !== sheetPath && oldPath in next.sheets) { delete next.sheets[oldPath]; changed = true; }
+      if (sum) { next.sheets[sheetPath] = sum; changed = true; }
+      else if (sheetPath in next.sheets) { delete next.sheets[sheetPath]; changed = true; }
+      if (!changed) { idxCache.set(ipath, cur); return; } // nothing to change
       try {
         const sha = await putFile(ipath, next, cur.sha, `Update summary ${month}`);
         idxCache.set(ipath, { sha, doc: next });
@@ -245,7 +266,12 @@
         } catch (e) {
           if (!e.conflict || attempt >= 2) throw e;
           // Someone else saved first – pull their version, merge, try again.
-          const remote = await getFile(s.path);
+          let remote = await getFile(s.path);
+          if (remote && remote.doc.movedTo) {
+            // Another device changed this sheet's details – follow it to its new file.
+            const r = await getSheet(remote.doc.movedTo);
+            s.path = r.path; remote = r.found;
+          }
           if (remote) { s.doc = merge(remote.doc, s.doc); s.sha = remote.sha; }
           else s.sha = null;
           if (sheet === s) render();
@@ -282,9 +308,26 @@
     window.scrollTo(0, 0);
   }
 
-  function cell(text, cls, entryId) {
-    const td = el('td', cls, text);
-    if (entryId) { td.dataset.id = entryId; td.classList.add('filled'); td.title = 'Tap to edit'; }
+  function cell(text, cls, entry, withTick) {
+    const td = el('td', cls);
+    if (entry) {
+      td.dataset.id = entry.id;
+      td.classList.add('filled');
+      if (entry.done) td.classList.add('done');
+      td.title = 'Tap to edit';
+      if (withTick) {
+        const wrap = el('label', 'tick-wrap');
+        const cb = el('input', 'tick');
+        cb.type = 'checkbox';
+        cb.checked = !!entry.done;
+        cb.dataset.tick = entry.id;
+        cb.title = entry.done ? 'Completed – tap to undo' : 'Tick off when complete';
+        cb.setAttribute('aria-label', 'Completed');
+        wrap.append(cb);
+        td.append(wrap);
+      }
+    }
+    if (text !== '' && text !== undefined && text !== null) td.append(el('span', 'txt', text));
     return td;
   }
 
@@ -298,6 +341,9 @@
     $('#mRego').textContent = m.rego || '';
     $('#mBin').textContent = m.bin || '';
     $('#mLocation').textContent = m.location || '';
+    const man = $('#mManifest');
+    man.textContent = m.manifest || 'tap to add';
+    man.classList.toggle('placeholder', !m.manifest);
 
     const entries = sheet.doc.entries;
     const alu = entries.filter(e => groupOf(e.material) === 'alu');
@@ -311,14 +357,14 @@
       const tr = document.createElement('tr');
       const a = alu[i], o = oth[i], g = gls[i];
       tr.append(
-        cell(a ? i + 1 : '', 'idx', a && a.id),
-        cell(a ? a.bag : '', '', a && a.id),
-        cell(o ? o.material : '', '', o && o.id),
-        cell(o ? o.bag : '', '', o && o.id),
-        cell(g ? g.ibc : '', '', g && g.id),
+        cell(a ? i + 1 : '', 'idx', a, true),
+        cell(a ? a.bag : '', '', a),
+        cell(o ? o.material : '', '', o, true),
+        cell(o ? o.bag : '', '', o),
+        cell(g ? g.ibc : '', '', g, true),
         g && (g.weight === '' || g.weight == null)
-          ? cell('to weigh', 'pending', g.id)
-          : cell(g ? g.weight : '', '', g && g.id),
+          ? cell('to weigh', 'pending', g)
+          : cell(g ? g.weight : '', '', g),
       );
       body.append(tr);
     }
@@ -336,6 +382,127 @@
     for (const mat of MATERIALS) {
       const n = entries.filter(e => e.material === mat.id).length;
       if (n) summary.append(el('span', 'chip', `${mat.id}: ${n}`));
+    }
+    if (entries.length) {
+      const done = entries.filter(e => e.done).length;
+      summary.append(el('span', `chip ${done === entries.length ? 'chip-done' : ''}`,
+        done === entries.length ? `✓ All ${done} ticked off` : `✓ ${done} of ${entries.length} ticked off`));
+    }
+  }
+
+  function toggleDone(id, done) {
+    const e = sheet && sheet.doc.entries.find(x => x.id === id);
+    if (!e) return;
+    e.done = done;
+    if (done) e.doneAt = nowIso(); else delete e.doneAt;
+    e.updatedAt = nowIso();
+    dirty = true;
+    render();
+    const m = sheet.doc.meta;
+    save(`${done ? 'Tick off' : 'Untick'} ${e.material} ${e.ibc ? 'IBC ' + e.ibc : 'bag ' + e.bag} – ${m.carrier} ${m.rego} ${m.date}`);
+  }
+
+  // ---------- Edit sheet details (everything except the date) ----------
+  const ddlg = $('#detailsDialog');
+  const DETAIL_LABELS = { carrier: 'carrier', rego: 'rego', bin: 'bin no', location: 'location', manifest: 'manifest no' };
+
+  function openDetails(focusId) {
+    if (!sheet) return;
+    const m = sheet.doc.meta;
+    $('#dDate').textContent = fmtDate(m.date);
+    $('#dCarrier').value = m.carrier || '';
+    $('#dRego').value = m.rego || '';
+    $('#dBin').value = m.bin || '';
+    $('#dLocation').value = m.location || '';
+    $('#dManifest').value = m.manifest || '';
+    $('#detailsError').textContent = '';
+    ddlg.showModal();
+    if (focusId) setTimeout(() => $(focusId).focus(), 0);
+  }
+
+  async function saveDetails() {
+    const err = $('#detailsError');
+    err.textContent = '';
+    if (!sheet) return;
+    if (saving) { err.textContent = 'Still saving the last change – try again in a moment.'; return; }
+    const s = sheet;
+    const old = s.doc.meta;
+    const meta = {
+      ...old,
+      carrier: $('#dCarrier').value.trim(),
+      rego: $('#dRego').value.trim().toUpperCase().replace(/\s+/g, ''),
+      bin: $('#dBin').value.trim(),
+      location: $('#dLocation').value.trim(),
+      manifest: $('#dManifest').value.trim(),
+    };
+    if (!meta.carrier || !meta.rego) { err.textContent = 'Carrier and truck rego are required.'; return; }
+    const changed = Object.keys(DETAIL_LABELS).filter(k => (old[k] || '') !== meta[k]);
+    if (!changed.length) { ddlg.close(); return; }
+    if (!meta.manifest) delete meta.manifest;
+
+    const msg = `Change ${changed.map(k => DETAIL_LABELS[k]).join(', ')} – ${meta.carrier} ${meta.rego} ${meta.date}`;
+    const newPath = buildPath(meta);
+
+    // Only the manifest (or capital letters) changed – same file, normal save.
+    if (newPath === s.path) {
+      s.doc.meta = meta;
+      s.doc.metaUpdatedAt = nowIso();
+      dirty = true;
+      ddlg.close();
+      render();
+      rememberCarrier(meta.carrier);
+      save(msg);
+      return;
+    }
+
+    // Carrier / rego / bin / location changed – the sheet moves to a new file.
+    const btn = $('#dSave');
+    btn.disabled = true;
+    saving = true;
+    setSaveStatus('Saving…', 'busy');
+    try {
+      const existing = await getFile(newPath);
+      if (existing && !existing.doc.movedTo) {
+        err.textContent = `There's already a sheet for ${meta.carrier} ${meta.rego} on ${fmtDate(meta.date)} with those details. Open that one from the home page instead.`;
+        setSaveStatus('');
+        return;
+      }
+      const oldPath = s.path;
+      let doc = { ...s.doc, meta, metaUpdatedAt: nowIso(), updatedAt: nowIso() };
+      let newSha = await putFile(newPath, doc, existing ? existing.sha : null, msg);
+
+      if (s.sha) {
+        const stub = { version: 1, movedTo: newPath, movedAt: nowIso() };
+        try {
+          await putFile(oldPath, stub, s.sha, `Details changed – moved to ${newPath}`);
+        } catch (e) {
+          if (!e.conflict) throw e;
+          // Someone saved the old sheet at the same moment – fold their entries in, then mark it moved.
+          const latest = await getFile(oldPath);
+          if (latest && !latest.doc.movedTo) {
+            doc = merge(latest.doc, doc);
+            newSha = await putFile(newPath, doc, newSha, msg);
+            await putFile(oldPath, stub, latest.sha, `Details changed – moved to ${newPath}`);
+          }
+        }
+      }
+
+      s.path = newPath;
+      s.sha = newSha;
+      s.doc = doc;
+      dirty = false;
+      rememberCarrier(meta.carrier);
+      try { await writeIndexEntry(newPath, doc, oldPath); } catch { /* summary catches up on next save */ }
+      setSaveStatus('✓ Details updated', 'ok');
+      ddlg.close();
+      render();
+    } catch (e) {
+      err.textContent = e.message;
+      setSaveStatus(`⚠ Details not saved (${e.message})`, 'err');
+    } finally {
+      saving = false;
+      btn.disabled = false;
+      if (saveAgain) { saveAgain = false; save(); }
     }
   }
 
@@ -398,11 +565,12 @@
     btn.disabled = true;
     st.className = 'status'; st.textContent = 'Checking for an existing sheet…';
     try {
-      const path = knownPath || buildPath(meta);
-      const found = await getFile(path);
+      const { path, found, moved } = await getSheet(knownPath || buildPath(meta));
       if (found) {
         sheet = { path, sha: found.sha, doc: found.doc };
-        setSaveStatus(`Opened existing sheet (${found.doc.entries.length} entries)`, 'ok');
+        setSaveStatus(moved
+          ? `This sheet's details were changed – opened the updated sheet (${found.doc.entries.length} entries)`
+          : `Opened existing sheet (${found.doc.entries.length} entries)`, 'ok');
       } else {
         sheet = { path, sha: null, doc: newDoc(meta) };
         setSaveStatus('New sheet – saves when the first entry is added');
@@ -423,7 +591,9 @@
     if (!sheet || saving) return;
     setSaveStatus('Refreshing…', 'busy');
     try {
-      const found = await getFile(sheet.path);
+      const r = await getSheet(sheet.path);
+      const found = r.found;
+      sheet.path = r.path;
       if (found) {
         sheet.doc = dirty ? merge(found.doc, sheet.doc) : found.doc;
         sheet.sha = found.sha;
@@ -571,18 +741,18 @@
 
       // Sheet 2: every load in the period
       const loads = [
-        ['Date', 'Carrier', 'Truck Rego', 'Bin No', 'Location', ...matHead, 'Glass kg', 'Glass to weigh', 'Total items'],
+        ['Date', 'Carrier', 'Truck Rego', 'Bin No', 'Location', 'Manifest No', ...matHead, 'Glass kg', 'Glass to weigh', 'Total items', 'Ticked off'],
         ...dashSheets.map(s => [
-          xlDate(s.date), s.carrier, s.rego, s.bin || '', s.location || '',
+          xlDate(s.date), s.carrier, s.rego, s.bin || '', s.location || '', s.manifest || '',
           ...MATERIALS.map(m => (s.counts || {})[m.id] || 0),
-          kg(s.glassKg), s.toWeigh || 0, s.total || 0,
+          kg(s.glassKg), s.toWeigh || 0, s.total || 0, s.done || 0,
         ]),
       ];
 
       window.downloadXlsx(safeName(`CRS summary - ${r.label} - ${todayLocal()}.xlsx`), [
         { name: 'By location', rows: loc, widths: [24, 8, ...MATERIALS.map(() => 13), 10],
           titleRows: [0], boldRows: [3, loc.length - 1] },
-        { name: 'Loads', rows: loads, widths: [12, 22, 12, 8, 18, ...MATERIALS.map(() => 13), 10, 14, 11],
+        { name: 'Loads', rows: loads, widths: [12, 22, 12, 8, 18, 14, ...MATERIALS.map(() => 13), 10, 14, 11, 11],
           boldRows: [0] },
       ]);
     } catch (e) {
@@ -604,20 +774,22 @@
         ['Date', xlDate(m.date), '', 'Truck Rego', m.rego],
         ['Carrier', m.carrier, '', 'Bin No', m.bin || ''],
         ['Location', m.location || ''],
+        ['Manifest No', m.manifest || ''],
         [],
-        ['Material', 'Bag Number', 'IBC #', 'Weight (kg)', 'Added'],
+        ['Material', 'Bag Number', 'IBC #', 'Weight (kg)', 'Added', 'Ticked off'],
         ...entries.map(e => [
           e.material, e.bag || '', e.ibc || '',
           e.weight === '' || e.weight == null ? '' : Number(e.weight),
           time(e.createdAt),
+          e.done ? `Yes ${time(e.doneAt)}`.trim() : '',
         ]),
         [],
         ['Totals'],
         ...totals,
       ];
-      const totalsRow = 7 + entries.length;
+      const totalsRow = 8 + entries.length;
       window.downloadXlsx(safeName(`${m.date} ${m.carrier} ${m.rego}.xlsx`), [
-        { name: 'Sheet', rows, widths: [16, 16, 12, 12, 10], titleRows: [0], boldRows: [5, totalsRow] },
+        { name: 'Sheet', rows, widths: [16, 16, 12, 12, 10, 14], titleRows: [0], boldRows: [6, totalsRow] },
       ]);
     } catch (e) {
       alert(`Export failed: ${e.message}`);
@@ -643,7 +815,7 @@
       const title = el('div', 'ri-title');
       title.append(document.createTextNode(`${s.carrier} · `), el('span', 'rego', s.rego));
       main.append(title);
-      const sub = [s.bin && `Bin ${s.bin}`, s.location].filter(Boolean).join(' · ');
+      const sub = [s.bin && `Bin ${s.bin}`, s.location, s.manifest && `Manifest ${s.manifest}`].filter(Boolean).join(' · ');
       if (sub) main.append(el('div', 'ri-sub', sub));
 
       const chips = el('div', 'ri-chips');
@@ -657,6 +829,10 @@
         chips.append(el('span', `chip ${mat.group}`, label));
       }
 
+      if (s.total) {
+        const all = (s.done || 0) >= s.total;
+        chips.append(el('span', `chip ${all ? 'chip-done' : 'chip-todo'}`, all ? '✓ All ticked' : `✓ ${s.done || 0}/${s.total}`));
+      }
       b.append(date, main, chips);
       b.addEventListener('click', () => {
         $('#fDate').value = s.date;
@@ -970,11 +1146,27 @@
     $('#saveStatus').addEventListener('click', () => { if (dirty && !saving) save(); });
 
     $('#addBtn').addEventListener('click', () => openEntryDialog());
+    $('#gridBody').addEventListener('change', (e) => {
+      if (e.target.matches('input.tick')) toggleDone(e.target.dataset.tick, e.target.checked);
+    });
     $('#gridBody').addEventListener('click', (e) => {
+      if (e.target.closest('.tick-wrap')) return; // tick box handles itself
       const td = e.target.closest('td[data-id]');
       if (!td) return;
       const entry = sheet.doc.entries.find(x => x.id === td.dataset.id);
       if (entry) openEntryDialog(entry);
+    });
+
+    $('#editDetailsBtn').addEventListener('click', () => openDetails());
+    $('#metaTable').addEventListener('click', (e) => {
+      openDetails(e.target.closest('#mManifest, .manifest-row') ? '#dManifest' : null);
+    });
+    $('#detailsForm').addEventListener('submit', (e) => { e.preventDefault(); saveDetails(); });
+    $('#dCancel').addEventListener('click', () => ddlg.close());
+    $('#dRego').addEventListener('input', (e) => {
+      const p = e.target.selectionStart;
+      e.target.value = e.target.value.toUpperCase();
+      e.target.setSelectionRange(p, p);
     });
 
     $('#entryForm').addEventListener('submit', (e) => { e.preventDefault(); submitEntry(false); });
