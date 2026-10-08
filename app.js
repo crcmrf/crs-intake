@@ -213,6 +213,8 @@
       manifest: m.manifest || '', done,
       counts, glassKg: Math.round(glassKg * 10) / 10, toWeigh, total: doc.entries.length,
       updatedAt: doc.updatedAt || nowIso(),
+      // [material, bag or IBC number, ticked] – used by the search box
+      items: doc.entries.map(e => [e.material, String((groupOf(e.material) === 'glass' ? e.ibc : e.bag) || ''), e.done ? 1 : 0]),
     };
   }
 
@@ -312,12 +314,22 @@
     window.scrollTo(0, 0);
   }
 
+  let highlight = null; // { material, number } from a search result
+  const normNum = (v) => String(v || '').toLowerCase().replace(/\s+/g, '');
+  function isHit(e) {
+    if (!highlight) return false;
+    if (highlight.material && e.material !== highlight.material) return false;
+    const n = normNum(groupOf(e.material) === 'glass' ? e.ibc : e.bag);
+    return !!highlight.number && n === highlight.number;
+  }
+
   function cell(text, cls, entry, withTick) {
     const td = el('td', cls);
     if (entry) {
       td.dataset.id = entry.id;
       td.classList.add('filled');
       if (entry.done) td.classList.add('done');
+      if (isHit(entry)) td.classList.add('hit');
       td.title = 'Tap to edit';
       if (withTick) {
         const wrap = el('label', 'tick-wrap');
@@ -583,6 +595,8 @@
       rememberCarrier(sheet.doc.meta.carrier);
       render();
       showSheet();
+      const hit = document.querySelector('#gridBody td.hit');
+      if (hit) setTimeout(() => hit.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
     } catch (e) {
       st.className = 'status err'; st.textContent = e.message;
       window.scrollTo(0, 0);
@@ -680,6 +694,7 @@
       dashSheets = list;
       recentShown = RECENT_PAGE;
       renderDashboard();
+      runSearch();
       refreshCarrierList(list.map(s => s.carrier));
       setDashStatus(list.length ? `${list.length} load${list.length === 1 ? '' : 's'} · ${r.label.toLowerCase()}` : '');
     } catch (e) {
@@ -753,6 +768,88 @@
       alert(`Download failed: ${e.message}`);
     } finally {
       btn.disabled = false;
+    }
+  }
+
+  function openFromSummary(s, hl = null) {
+    highlight = hl;
+    $('#fDate').value = s.date;
+    setCombo('#fCarrier', s.carrier);
+    $('#fRego').value = s.rego;
+    $('#fBin').value = s.bin || '';
+    setCombo('#fLocation', s.location || '');
+    openSheet({ date: s.date, carrier: s.carrier, rego: s.rego, bin: s.bin || '', location: s.location || '' }, s.path);
+  }
+
+  // ---------- Search bags / IBCs ----------
+  const SEARCH_LIMIT = 100;
+  function runSearch() {
+    const mat = $('#qMat').value;
+    const raw = $('#qNum').value.trim();
+    const q = normNum(raw);
+    const out = $('#searchResults'), st = $('#searchStatus');
+    out.textContent = '';
+    st.className = 'hint';
+    if (!q) {
+      st.textContent = mat
+        ? `Type a ${groupOf(mat) === 'glass' ? 'IBC' : 'bag'} number to search ${mat} only.`
+        : 'Type a bag or IBC number. Leave the product as "Any product" to search everything.';
+      return;
+    }
+    const range = currentRange().label.toLowerCase();
+    const results = [];
+    let missing = 0;
+    for (const s of dashSheets) {
+      if (!Array.isArray(s.items)) { if (s.total) missing++; continue; }
+      for (const [m, num, done] of s.items) {
+        if (mat && m !== mat) continue;
+        const n = normNum(num);
+        if (!n.includes(q)) continue;
+        results.push({ s, material: m, number: num, done, exact: n === q });
+      }
+    }
+    results.sort((a, b) => (b.exact - a.exact) || b.s.date.localeCompare(a.s.date) || a.number.localeCompare(b.number, undefined, { numeric: true }));
+    const exact = results.filter(r => r.exact).length;
+    const what = mat ? `${mat} ` : '';
+    st.textContent = results.length
+      ? `${exact} exact match${exact === 1 ? '' : 'es'}${results.length > exact ? `, ${results.length - exact} containing "${raw}"` : ''} for ${what}"${raw}" · ${range}`
+      : `No ${mat ? `${mat} ${groupOf(mat) === 'glass' ? 'IBCs' : 'bags'}` : 'bags or IBCs'} matching "${raw}" in the ${range}. Try a longer period above.`;
+    if (missing) {
+      const note = el('p', 'status err');
+      note.textContent = `${missing} load${missing === 1 ? ' was' : 's were'} saved before search was added and can't be searched yet – tap "Rebuild the summary" under the By location table to include ${missing === 1 ? 'it' : 'them'}.`;
+      out.append(note);
+    }
+
+    for (const r of results.slice(0, SEARCH_LIMIT)) {
+      const g = groupOf(r.material);
+      const b = el('button', `search-item${r.exact ? ' exact' : ''}`);
+      b.type = 'button';
+      b.title = 'Open this sheet';
+
+      const left = el('div', 'si-left');
+      left.append(el('span', `chip ${g}`, r.material));
+      const num = el('span', `si-num${r.done ? ' done' : ''}`);
+      const i = r.number.toLowerCase().indexOf(raw.toLowerCase());
+      if (i >= 0) {
+        num.append(document.createTextNode(r.number.slice(0, i)), el('mark', '', r.number.slice(i, i + raw.length)),
+          document.createTextNode(r.number.slice(i + raw.length)));
+      } else {
+        num.textContent = r.number;
+      }
+      left.append(el('span', 'si-kind', g === 'glass' ? 'IBC' : 'Bag'), num);
+      if (r.done) left.append(el('span', 'chip chip-done', '✓ Ticked'));
+
+      const right = el('div', 'si-right');
+      right.append(el('div', 'si-load', `${fmtDate(r.s.date)} · ${r.s.carrier} · ${r.s.rego}`));
+      const sub = [r.s.location, r.s.bin && `Bin ${r.s.bin}`, r.s.manifest && `Manifest ${r.s.manifest}`].filter(Boolean).join(' · ');
+      if (sub) right.append(el('div', 'si-sub', sub));
+
+      b.append(left, right);
+      b.addEventListener('click', () => openFromSummary(r.s, { material: r.material, number: normNum(r.number) }));
+      out.append(b);
+    }
+    if (results.length > SEARCH_LIMIT) {
+      out.append(el('p', 'hint', `Showing the first ${SEARCH_LIMIT} of ${results.length}. Type more of the number to narrow it down.`));
     }
   }
 
@@ -907,14 +1004,7 @@
         chips.append(el('span', `chip ${all ? 'chip-done' : 'chip-todo'}`, all ? '✓ All ticked' : `✓ ${s.done || 0}/${s.total}`));
       }
       b.append(date, main, chips);
-      b.addEventListener('click', () => {
-        $('#fDate').value = s.date;
-        setCombo('#fCarrier', s.carrier);
-        $('#fRego').value = s.rego;
-        $('#fBin').value = s.bin || '';
-        setCombo('#fLocation', s.location || '');
-        openSheet({ date: s.date, carrier: s.carrier, rego: s.rego, bin: s.bin || '', location: s.location || '' }, s.path);
-      });
+      b.addEventListener('click', () => openFromSummary(s));
       listEl.append(b);
     }
     const more = $('#recentMore');
@@ -1203,6 +1293,16 @@
   function init() {
     $('#fDate').value = todayLocal();
     refreshCarrierList();
+    // Search box
+    const qMat = $('#qMat');
+    qMat.append(new Option('Any product', ''));
+    for (const m of MATERIALS) qMat.append(new Option(m.id, m.id));
+    let searchTimer;
+    $('#qNum').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 150); });
+    qMat.addEventListener('change', runSearch);
+    $('#qClear').addEventListener('click', () => { $('#qNum').value = ''; qMat.value = ''; runSearch(); $('#qNum').focus(); });
+    runSearch();
+
     setupCombo('#fCarrier', CARRIERS, 'Choose carrier…');
     setupCombo('#fLocation', LOCATIONS, '— None —');
     setupCombo('#dCarrier', CARRIERS, 'Choose carrier…');
@@ -1245,7 +1345,7 @@
 
     $('#backBtn').addEventListener('click', () => {
       if ((dirty || saving) && !confirm('Changes are still saving or failed to save. Leave anyway?')) return;
-      sheet = null; dirty = false;
+      sheet = null; dirty = false; highlight = null;
       // Clear the lookup so the next truck starts fresh
       $('#startForm').reset();
       $('#fDate').value = todayLocal();

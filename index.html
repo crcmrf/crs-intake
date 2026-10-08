@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CRS Intake</title>
   <meta http-equiv="Cache-Control" content="no-cache">
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
   <header class="topbar">
-    <span class="brand">CRS Intake <small class="ver">v7</small></span>
+    <span class="brand">CRS Intake <small class="ver">v8</small></span>
     <button id="settingsBtn" class="ghost" type="button">⚙ Settings</button>
   </header>
 
@@ -49,6 +49,19 @@
         <p id="dashStatus" class="status"></p>
         <div id="recentList" class="recent"></div>
         <button type="button" id="recentMore" class="more" hidden>Show more</button>
+      </div>
+
+      <div class="card dash span-all" id="searchCard">
+        <div class="dash-head">
+          <h2>Find a bag or IBC</h2>
+        </div>
+        <div class="search-row">
+          <select id="qMat" aria-label="Product"></select>
+          <input id="qNum" type="search" inputmode="search" autocomplete="off" placeholder="Bag or IBC number" aria-label="Bag or IBC number">
+          <button type="button" id="qClear">Clear</button>
+        </div>
+        <p id="searchStatus" class="hint"></p>
+        <div id="searchResults" class="search-results"></div>
       </div>
 
       <div class="card dash span-all">
@@ -221,8 +234,8 @@
     </form>
   </dialog>
 
-  <script src="config.js?v=7"></script>
-  <script src="xlsx.js?v=7"></script>
-  <script src="app.js?v=7"></script>
+  <script src="config.js?v=8"></script>
+  <script src="xlsx.js?v=8"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

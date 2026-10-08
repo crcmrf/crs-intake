@@ -235,3 +235,27 @@ select.combo + input.combo-other { margin-top: 6px; }
 .report-name { flex: 1; font-weight: 600; }
 .report-dl { color: #1d6f42; }
 @media print { #reportsCard { display: none; } }
+
+/* ---------- Search ---------- */
+.search-row { display: grid; grid-template-columns: minmax(150px, 220px) 1fr auto; gap: 8px; margin-bottom: 8px; }
+.search-row select { padding: 11px 12px; }
+@media (max-width: 560px) { .search-row { grid-template-columns: 1fr auto; } .search-row select { grid-column: 1 / -1; } }
+.search-results { display: grid; gap: 6px; max-height: 520px; overflow-y: auto; }
+.search-item {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 16px;
+  width: 100%; text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--hair); background: #fff;
+}
+.search-item:hover { border-color: var(--accent); background: #f6faf8; }
+.search-item.exact { border-left: 4px solid var(--accent); }
+.si-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.si-left .chip { font-size: .75rem; padding: 2px 8px; border: 1px solid rgba(0,0,0,.08); }
+.si-kind { font-size: .75rem; color: var(--muted); }
+.si-num { font-weight: 700; font-size: 1.05rem; letter-spacing: .02em; }
+.si-num.done { text-decoration: line-through; color: #8a8f98; }
+.si-num mark { background: #ffe58a; border-radius: 3px; padding: 0 1px; color: inherit; }
+.si-right { text-align: right; font-size: .85rem; }
+.si-load { font-weight: 600; }
+.si-sub { color: var(--muted); font-size: .8rem; }
+.grid td.hit { background: #fff1a8 !important; box-shadow: inset 0 0 0 2px #e0b400; }
+body.print-mode .grid td.hit { background: none !important; box-shadow: none; }
+@media print { #searchCard { display: none; } }

@@ -30,6 +30,8 @@ Below the lookup form:
 - **Export to Excel** – downloads the period as an .xlsx file with two tabs: *By location* (the totals table) and *Loads* (every load, one row each).
 - **Period dropdown** – 7 days, 14 days, month, 3, 6 or 12 months (remembered on each device).
 
+- **Find a bag or IBC** – type a number to find every load it's on in the chosen period. Leave the product on "Any product" to search everything, or pick a product to only match that product. Exact matches are listed first, then numbers that contain what you typed. Tap a result to open the sheet with that bag highlighted.
+
 These read small monthly summary files (`data/_index/2026-10.json`) that are updated each time a sheet is saved, so the page stays quick even over 12 months. If a load is ever missing from the list, tap **"Rebuild the summary for this period"** at the bottom of the page.
 
 ## Setup (about 10 minutes)
