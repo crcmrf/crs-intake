@@ -624,11 +624,21 @@
   }
 
   // ---------- Home dashboard ----------
-  let dashSheets = [];
+  // Recent loads, By location and the search box each have their own period.
+  // Monthly summary files are fetched once per visit to the home page and shared.
+  const ALL_RANGE = { id: 'all', label: 'All entries' };
+  const PANELS = {
+    recent: { sel: '#rangeSel', key: 'crs-range',        def: '7d',  all: false, sheets: [], seq: 0 },
+    loc:    { sel: '#locRange', key: 'crs-range-loc',    def: '1m',  all: false, sheets: [], seq: 0 },
+    search: { sel: '#qRange',   key: 'crs-range-search', def: 'all', all: true,  sheets: [], seq: 0 },
+  };
   let recentShown = RECENT_PAGE;
-  let dashSeq = 0;
 
-  const currentRange = () => RANGES.find(r => r.id === $('#rangeSel').value) || RANGES[0];
+  function panelRange(name) {
+    const v = $(PANELS[name].sel).value;
+    return v === 'all' ? ALL_RANGE : (RANGES.find(r => r.id === v) || RANGES[0]);
+  }
+  const rangeText = (r) => (r.id === 'all' ? 'all entries' : r.label.toLowerCase());
 
   function rangeStart(r) {
     const d = new Date();
@@ -655,52 +665,112 @@
     return out;
   }
 
-  function setDashStatus(text, kind = '') {
-    const s = $('#dashStatus');
-    s.textContent = text;
-    s.className = `status ${kind}`;
+  let monthCache = new Map();   // 'YYYY-MM' -> Promise<index doc | null>
+  let allMonthsPromise = null;  // Promise<['YYYY-MM', ...]> – every month that has a summary file
+  function resetDashCache() { monthCache = new Map(); allMonthsPromise = null; }
+
+  function fetchMonth(m) {
+    if (!monthCache.has(m)) {
+      const p = getFile(indexPath(m), { checkRepo: false }).then(f => {
+        if (f) idxCache.set(indexPath(m), { sha: f.sha, doc: f.doc });
+        return f ? f.doc : null;
+      });
+      p.catch(() => monthCache.delete(m));
+      monthCache.set(m, p);
+    }
+    return monthCache.get(m);
+  }
+  function listAllMonths() {
+    if (!allMonthsPromise) {
+      allMonthsPromise = (async () => {
+        const res = await fetch(`${contentsUrl(`${settings.dataDir}/_index`)}?ref=${encodeURIComponent(settings.branch)}`,
+          { headers: headers(), cache: 'no-store' });
+        if (res.status === 404) return [];
+        if (!res.ok) throw await apiError(res);
+        return (await res.json())
+          .map(f => (f.name.match(/^(\d{4}-\d{2})\.json$/) || [])[1])
+          .filter(Boolean).sort();
+      })();
+      allMonthsPromise.catch(() => { allMonthsPromise = null; });
+    }
+    return allMonthsPromise;
   }
 
-  async function loadDashboard() {
-    const seq = ++dashSeq;
-    const r = currentRange();
-    $('#rangeLabel').textContent = r.label;
-    if (seq === 1 || !$('#reportList').childElementCount) loadReports();
+  async function loadSheetsFor(r) {
+    const all = r.id === 'all';
+    const from = all ? '0000-01-01' : rangeStart(r);
+    const to = all ? '9999-12-31' : todayLocal();
+    const months = all ? await listAllMonths() : monthsBetween(from, todayLocal());
+    const docs = [];
+    await pool(months, 4, async (m) => { docs.push(await fetchMonth(m)); });
+    const list = [];
+    for (const d of docs) {
+      if (!d) continue;
+      for (const s of Object.values(d.sheets || {})) {
+        if (s.date >= from && s.date <= to) list.push(s);
+      }
+    }
+    list.sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    return list;
+  }
+
+  function setStatus(sel, text, kind = '') {
+    const s = $(sel);
+    s.textContent = text;
+    s.className = `${sel === '#searchStatus' ? 'hint' : 'status'} ${kind}`;
+  }
+  const countText = (n, r) => (n ? `${n} load${n === 1 ? '' : 's'} · ${rangeText(r)}` : '');
+
+  const PANEL_VIEW = {
+    recent: {
+      render: () => renderRecent(),
+      status: (t, k) => setStatus('#dashStatus', t, k),
+      done: (list, r) => { setStatus('#dashStatus', countText(list.length, r)); refreshCarrierList(list.map(x => x.carrier)); },
+    },
+    loc: {
+      render: () => renderLocation(),
+      status: (t, k) => setStatus('#locStatus', t, k),
+      done: (list, r) => setStatus('#locStatus', countText(list.length, r)),
+    },
+    search: {
+      render: () => runSearch(),
+      status: (t, k) => setStatus('#searchStatus', t, k),
+      done: () => {},
+    },
+  };
+
+  async function loadPanel(name) {
+    const P = PANELS[name], V = PANEL_VIEW[name];
+    const seq = ++P.seq;
+    const r = panelRange(name);
     if (!isConfigured()) {
-      dashSheets = [];
-      renderDashboard();
-      setDashStatus('Connect to GitHub in ⚙ Settings to see recent loads.');
+      P.sheets = [];
+      V.render();
+      V.status(name === 'recent' ? 'Connect to GitHub in ⚙ Settings to see recent loads.' : '');
       return;
     }
-    setDashStatus('Loading…');
+    V.status(r.id === 'all' ? 'Loading all entries…' : 'Loading…');
     try {
-      const from = rangeStart(r), to = todayLocal();
-      const months = monthsBetween(from, to);
-      const files = new Array(months.length);
-      await pool(months.map((m, i) => [m, i]), 4, async ([m, i]) => {
-        const f = await getFile(indexPath(m), { checkRepo: false });
-        if (f) idxCache.set(indexPath(m), { sha: f.sha, doc: f.doc });
-        files[i] = f;
-      });
-      if (seq !== dashSeq) return; // a newer load started
-      const list = [];
-      for (const f of files) {
-        if (!f) continue;
-        for (const s of Object.values(f.doc.sheets || {})) {
-          if (s.date >= from && s.date <= to) list.push(s);
-        }
-      }
-      list.sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-      dashSheets = list;
-      recentShown = RECENT_PAGE;
-      renderDashboard();
-      runSearch();
-      refreshCarrierList(list.map(s => s.carrier));
-      setDashStatus(list.length ? `${list.length} load${list.length === 1 ? '' : 's'} · ${r.label.toLowerCase()}` : '');
+      const list = await loadSheetsFor(r);
+      if (seq !== P.seq) return; // a newer load started
+      P.sheets = list;
+      if (name === 'recent') recentShown = RECENT_PAGE;
+      V.render();
+      V.done(list, r);
     } catch (e) {
-      if (seq !== dashSeq) return;
-      setDashStatus(e.message, 'err');
+      if (seq !== P.seq) return;
+      V.status(e.message, 'err');
     }
+  }
+
+  let firstDashLoad = true;
+  function loadDashboard() {
+    resetDashCache(); // fresh data each time the home page is shown
+    if (firstDashLoad || !$('#reportList').childElementCount) loadReports();
+    firstDashLoad = false;
+    loadPanel('recent');
+    loadPanel('loc');
+    loadPanel('search');
   }
 
   // ---------- Monthly reports (made by the GitHub job in the data repo) ----------
@@ -796,10 +866,11 @@
         : 'Type a bag or IBC number. Leave the product as "Any product" to search everything.';
       return;
     }
-    const range = currentRange().label.toLowerCase();
+    const sr = panelRange('search');
+    const range = rangeText(sr);
     const results = [];
     let missing = 0;
-    for (const s of dashSheets) {
+    for (const s of PANELS.search.sheets) {
       if (!Array.isArray(s.items)) { if (s.total) missing++; continue; }
       for (const [m, num, done] of s.items) {
         if (mat && m !== mat) continue;
@@ -813,10 +884,15 @@
     const what = mat ? `${mat} ` : '';
     st.textContent = results.length
       ? `${exact} exact match${exact === 1 ? '' : 'es'}${results.length > exact ? `, ${results.length - exact} containing "${raw}"` : ''} for ${what}"${raw}" · ${range}`
-      : `No ${mat ? `${mat} ${groupOf(mat) === 'glass' ? 'IBCs' : 'bags'}` : 'bags or IBCs'} matching "${raw}" in the ${range}. Try a longer period above.`;
+      : `No ${mat ? `${mat} ${groupOf(mat) === 'glass' ? 'IBCs' : 'bags'}` : 'bags or IBCs'} matching "${raw}" · ${range}.` +
+        (sr.id === 'all' ? '' : ' Try a longer period, or "All entries".');
     if (missing) {
-      const note = el('p', 'status err');
-      note.textContent = `${missing} load${missing === 1 ? ' was' : 's were'} saved before search was added and can't be searched yet – tap "Rebuild the summary" under the By location table to include ${missing === 1 ? 'it' : 'them'}.`;
+      const note = el('div', 'search-note');
+      note.append(el('span', '', `${missing} load${missing === 1 ? ' was' : 's were'} saved before search was added and can't be searched yet.`));
+      const fix = el('button', 'excel-btn', 'Make them searchable');
+      fix.type = 'button';
+      fix.addEventListener('click', () => rebuildIndex(sr, (t, k) => setStatus('#searchStatus', t, k), fix));
+      note.append(fix);
       out.append(note);
     }
 
@@ -892,14 +968,15 @@
   const safeName = (s) => s.replace(/[\\/:*?"<>|]+/g, '-').trim();
 
   function exportDashboard() {
-    if (!dashSheets.length) { alert('There are no loads in this period to export.'); return; }
+    const locSheets = PANELS.loc.sheets;
+    if (!locSheets.length) { alert('There are no loads in this period to export.'); return; }
     try {
-      const r = currentRange();
+      const r = panelRange('loc');
       const matHead = MATERIALS.map(m => (m.group === 'glass' ? 'Glass (IBC)' : m.id));
       const kg = (n) => Math.round((n || 0) * 10) / 10;
 
       // Sheet 1: totals by location
-      const { rows, total } = groupByLocation(dashSheets);
+      const { rows, total } = groupByLocation(locSheets);
       const loc = [
         [`CRS material by location – ${r.label}`],
         [`${fmtDate(rangeStart(r))} to ${fmtDate(todayLocal())}`],
@@ -912,7 +989,7 @@
       // Sheet 2: every load in the period
       const loads = [
         ['Date', 'Carrier', 'Truck Rego', 'Bin No', 'Location', 'Manifest No', ...matHead, 'Glass kg', 'Glass to weigh', 'Total items', 'Ticked off'],
-        ...dashSheets.map(s => [
+        ...locSheets.map(s => [
           xlDate(s.date), s.carrier, s.rego, s.bin || '', s.location || '', s.manifest || '',
           ...MATERIALS.map(m => (s.counts || {})[m.id] || 0),
           kg(s.glassKg), s.toWeigh || 0, s.total || 0, s.done || 0,
@@ -966,14 +1043,14 @@
     }
   }
 
-  function renderDashboard() {
-    // ----- Recent loads -----
+  function renderRecent() {
+    const recentSheets = PANELS.recent.sheets;
     const listEl = $('#recentList');
     listEl.textContent = '';
-    if (!dashSheets.length) {
+    if (!recentSheets.length) {
       listEl.append(el('div', 'empty', isConfigured() ? 'No loads in this period.' : ''));
     }
-    for (const s of dashSheets.slice(0, recentShown)) {
+    for (const s of recentSheets.slice(0, recentShown)) {
       const b = el('button', 'recent-item');
       b.type = 'button';
       b.title = 'Open this sheet';
@@ -1008,11 +1085,12 @@
       listEl.append(b);
     }
     const more = $('#recentMore');
-    more.hidden = dashSheets.length <= recentShown;
-    more.textContent = `Show more (${dashSheets.length - recentShown} more)`;
+    more.hidden = recentSheets.length <= recentShown;
+    more.textContent = `Show more (${recentSheets.length - recentShown} more)`;
+  }
 
-    // ----- By location -----
-    const { rows, total } = groupByLocation(dashSheets);
+  function renderLocation() {
+    const { rows, total } = groupByLocation(PANELS.loc.sheets);
 
     const table = $('#companyTable');
     table.textContent = '';
@@ -1054,24 +1132,23 @@
 
   // Re-create the monthly summary files from the sheets themselves (for sheets saved
   // before the summary existed, or if a summary update was missed).
-  async function rebuildIndex() {
+  async function rebuildIndex(r, status, btn) {
     if (!isConfigured()) { openSettings('Set up the GitHub connection first.'); return; }
-    const r = currentRange();
-    if (!confirm(`Rebuild the summary for ${r.label.toLowerCase()}? This re-reads every sheet in that period and may take a minute.`)) return;
-    const btn = $('#rebuildBtn');
-    btn.disabled = true;
+    if (!confirm(`Rebuild the summary for ${rangeText(r)}? This re-reads every sheet in that period and may take a minute.`)) return;
+    if (btn) btn.disabled = true;
     try {
-      setDashStatus('Listing sheets…');
+      status('Listing sheets…');
       const res = await fetch(`${repoUrl()}/git/trees/${encodeURIComponent(settings.branch)}?recursive=1`,
         { headers: headers(), cache: 'no-store' });
       if (!res.ok) throw await apiError(res);
       const tree = await res.json();
-      const months = monthsBetween(rangeStart(r), todayLocal());
       const dir = settings.dataDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const re = new RegExp(`^${dir}/(\\d{4}-\\d{2})-\\d{2}/[^/]+\\.json$`);
-      const paths = (tree.tree || [])
-        .filter(t => t.type === 'blob' && re.test(t.path) && months.includes(t.path.match(re)[1]))
-        .map(t => t.path);
+      const allPaths = (tree.tree || []).filter(t => t.type === 'blob' && re.test(t.path)).map(t => t.path);
+      const months = r.id === 'all'
+        ? [...new Set(allPaths.map(p => p.match(re)[1]))].sort()
+        : monthsBetween(rangeStart(r), todayLocal());
+      const paths = allPaths.filter(p => months.includes(p.match(re)[1]));
 
       const byMonth = new Map(months.map(m => [m, {}]));
       let done = 0;
@@ -1081,10 +1158,10 @@
           byMonth.get(p.match(re)[1])[p] = summarize(p, f.doc);
         }
         done++;
-        setDashStatus(`Reading sheets ${done}/${paths.length}…`);
+        status(`Reading sheets ${done}/${paths.length}…`);
       });
 
-      setDashStatus('Writing summary…');
+      status('Writing summary…');
       for (const [month, sheets] of byMonth) {
         const ipath = indexPath(month);
         const existing = await getFile(ipath, { checkRepo: false });
@@ -1094,11 +1171,11 @@
         idxCache.set(ipath, { sha, doc });
       }
       if (tree.truncated) alert('The repository is very large, so some sheets may not have been included.');
-      await loadDashboard();
+      loadDashboard();
     } catch (e) {
-      setDashStatus(`Rebuild failed: ${e.message}`, 'err');
+      status(`Rebuild failed: ${e.message}`, 'err');
     } finally {
-      btn.disabled = false;
+      if (btn) btn.disabled = false;
     }
   }
 
@@ -1310,16 +1387,19 @@
     buildMaterialButtons();
 
     // Period dropdown (remembers the last choice on this device)
-    const rangeSel = $('#rangeSel');
-    for (const r of RANGES) {
-      const o = el('option', '', r.label); o.value = r.id; rangeSel.append(o);
+    // A period dropdown for each home-page panel (each remembers its own choice)
+    for (const [name, P] of Object.entries(PANELS)) {
+      const sel = $(P.sel);
+      for (const r of RANGES) sel.append(new Option(r.label, r.id));
+      if (P.all) sel.append(new Option(ALL_RANGE.label, ALL_RANGE.id));
+      sel.value = store.get(P.key, P.def);
+      if (!sel.value) sel.value = P.def;
+      sel.addEventListener('change', () => { store.set(P.key, sel.value); loadPanel(name); });
     }
-    rangeSel.value = store.get('crs-range', '7d');
-    if (!rangeSel.value) rangeSel.value = '7d';
-    rangeSel.addEventListener('change', () => { store.set('crs-range', rangeSel.value); loadDashboard(); });
     $('#dashRefresh').addEventListener('click', () => { loadDashboard(); loadReports(); });
-    $('#recentMore').addEventListener('click', () => { recentShown += RECENT_PAGE; renderDashboard(); });
-    $('#rebuildBtn').addEventListener('click', rebuildIndex);
+    $('#recentMore').addEventListener('click', () => { recentShown += RECENT_PAGE; renderRecent(); });
+    $('#rebuildBtn').addEventListener('click', (e) =>
+      rebuildIndex(panelRange('loc'), (t, k) => setStatus('#locStatus', t, k), e.currentTarget));
     $('#exportDash').addEventListener('click', exportDashboard);
     $('#exportSheet').addEventListener('click', exportSheet);
 
